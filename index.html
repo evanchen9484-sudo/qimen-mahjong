@@ -1,0 +1,1146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<!--
+  【修复 1｜最重要的无障碍缺陷】
+  原版：width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no
+        → 禁止双指缩放。WCAG 1.4.4 要求文本可放大到 200%；
+          国内《移动互联网应用适老化》也明确要求不得禁用缩放。
+          对老花眼用户（麻将局主力人群！）这是硬伤。
+  改版：去掉 maximum-scale 与 user-scalable，放开缩放；viewport-fit=cover 适配刘海屏。
+-->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f5f7fa" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#12151a" media="(prefers-color-scheme: dark)">
+<title>麻将算账助手 v1.1</title>
+<style>
+/* ============================================================================
+   麻将算账助手 v1.1 — UI/UX 重构版
+   算法层与原版逐字一致（见文件末尾 <script>），本文件只重写表现层。
+   ========================================================================== */
+
+/* ---------- 设计令牌：单一事实源，全站只引用变量 ---------- */
+:root {
+  --bg:        #eef1f6;
+  --bg-accent: #e3e8f2;
+  --card:      #ffffff;
+  --card-2:    #fafbfd;
+  --ink:       #1f2329;
+  --ink-2:     #4a5260;
+  --muted:     #8a9099;
+  --line:      #e8ebf0;
+  --line-2:    #f2f4f7;
+
+  --brand:      #e8442e;
+  --brand-soft: #fdecea;
+  --brand-deep: #c9331f;
+
+  --ok:      #12996a;
+  --ok-soft: #e7f7f0;
+  --sec:      #2b6cff;
+  --sec-soft: #eaf1ff;
+  --warn:     #c2740a;
+  --warn-soft:#fef4e5;
+
+  /* 尺寸节奏（8pt 栅格的思想，用 clamp 做流体） */
+  --r-lg: 16px;
+  --r-md: 12px;
+  --r-sm: 9px;
+  --pad:  clamp(13px, 4vw, 18px);   /* 卡片内边距：随屏宽流体 */
+  --gap:  clamp(10px, 3vw, 14px);
+  --edge: clamp(10px, 3.5vw, 20px); /* 页面左右留白 */
+
+  --shadow-1: 0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.06);
+  --shadow-2: 0 6px 20px rgba(232,68,46,.10), 0 2px 6px rgba(16,24,40,.06);
+
+  /* 触摸目标最小值（iOS HIG 44pt / Material 48dp） */
+  --tap: 44px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:#12151a; --bg-accent:#171b22; --card:#1c2129; --card-2:#20252e;
+    --ink:#e8ecf2; --ink-2:#b6bfcc; --muted:#8b95a5;
+    --line:#2c333d; --line-2:#252b34;
+    --brand:#ff5f47; --brand-soft:#3a1d19; --brand-deep:#ff7a63;
+    --ok:#3ddc9a; --ok-soft:#123a2c;
+    --sec:#6ea8ff; --sec-soft:#16243c;
+    --warn:#f0a44a; --warn-soft:#3a2a12;
+    --shadow-1: 0 1px 2px rgba(0,0,0,.3);
+    --shadow-2: 0 6px 20px rgba(0,0,0,.4);
+  }
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body { margin:0; padding:0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
+               "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  background:
+    radial-gradient(1200px 400px at 50% -140px, var(--bg-accent), transparent 70%),
+    var(--bg);
+  color: var(--ink);
+  line-height: 1.55;
+  /* 【修复 2】安全区：刘海屏/水滴屏/手势条不再遮挡内容 */
+  padding: calc(var(--edge) + env(safe-area-inset-top, 0px))
+           calc(var(--edge) + env(safe-area-inset-right, 0px))
+           calc(var(--edge) + env(safe-area-inset-bottom, 0px))
+           calc(var(--edge) + env(safe-area-inset-left, 0px));
+  max-width: 520px;
+  margin: 0 auto;
+  min-height: 100dvh;
+  -webkit-text-size-adjust: 100%;   /* 横屏时不被强制放大 */
+  text-size-adjust: 100%;
+}
+
+/* ---------- 页头 ---------- */
+.top { text-align:center; margin: 2px 0 var(--gap); }
+.top h1 {
+  font-size: clamp(19px, 5.4vw, 23px);
+  margin: 0; font-weight: 800; letter-spacing: .3px;
+  display:inline-flex; align-items:center; gap:.4em;
+}
+.top h1 .tile {
+  display:inline-grid; place-items:center;
+  width:1.5em; height:1.5em; border-radius:.36em;
+  background:linear-gradient(160deg,#fff, #eef1f5);
+  border:1px solid var(--line);
+  color:var(--brand); font-size:.82em; font-weight:800;
+  box-shadow: var(--shadow-1);
+}
+.top .sub { font-size:12.5px; color:var(--muted); margin-top:3px; }
+
+/* ---------- 卡片 ---------- */
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: var(--pad);
+  margin-bottom: var(--gap);
+  box-shadow: var(--shadow-1);
+}
+
+.sec-head { display:flex; align-items:center; gap:9px; margin:0 0 12px; }
+.sec-tag {
+  font-size:11.5px; font-weight:700; color:var(--sec); background:var(--sec-soft);
+  padding:3px 9px; border-radius:999px; letter-spacing:.4px; flex:0 0 auto;
+}
+.sec-title { font-size:clamp(16px, 4.4vw, 18px); font-weight:700; margin:0; }
+
+/* ---------- 表单行 ---------- */
+.field {
+  display:flex; align-items:center; gap:12px;
+  padding:9px 0; border-bottom:1px solid var(--line-2);
+}
+.field:last-child { border-bottom:none; }
+.field > label { font-size:14.5px; flex:0 0 auto; }
+.field .hint { font-size:12.5px; color:var(--muted); margin-left:5px; }
+.field input {
+  flex:1 1 auto; min-width:0; text-align:right;
+  font-size:16px;                 /* ≥16px 防 iOS 聚焦自动放大 */
+  border:1px solid var(--line); border-radius:var(--r-sm);
+  padding:11px 12px; background:var(--card-2); color:var(--ink);
+  transition:border-color .15s, box-shadow .15s, background .15s;
+  font-variant-numeric: tabular-nums;
+}
+.field input:focus {
+  outline:none; border-color:var(--sec); background:var(--card);
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--sec) 16%, transparent);
+}
+.field input:disabled { background:var(--line-2); color:var(--muted); }
+
+/* ---------- 底分 chips：小屏自动换行，不再挤成一条 ---------- */
+.ratio-chips {
+  display:grid; gap:8px;
+  grid-template-columns: repeat(4, minmax(0,1fr));
+}
+.chip {
+  position:relative; display:grid; place-items:center;
+  min-height:var(--tap);                     /* 【修复 3】触摸目标 ≥44px */
+  text-align:center; font-size:14.5px; color:var(--ink);
+  border:1.5px solid var(--line); border-radius:var(--r-sm);
+  background:var(--card-2); cursor:pointer; user-select:none;
+  padding:6px 4px; transition:.15s;
+}
+.chip input { position:absolute; opacity:0; width:0; height:0; }
+.chip.on {
+  border-color:var(--brand); background:var(--brand-soft);
+  color:var(--brand); font-weight:700;
+}
+.ratio-custom {
+  width:100%; margin-top:9px; font-size:16px;
+  border:1px solid var(--line); border-radius:var(--r-sm);
+  padding:11px 12px; background:var(--card-2); color:var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.ratio-custom:focus {
+  outline:none; border-color:var(--sec); background:var(--card);
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--sec) 16%, transparent);
+}
+
+/* ---------- 牌手卡 ---------- */
+.player {
+  border:1.5px solid var(--line); border-radius:var(--r-md);
+  padding:11px 12px; margin-bottom:9px;
+  background:var(--card-2);
+  transition:opacity .3s ease, transform .3s ease, border-color .15s;
+}
+.player:focus-within { border-color:var(--sec); background:var(--card); }
+.player.invalid { border-color:var(--brand); background:var(--brand-soft); }
+.player.removing { opacity:0; transform:translateY(10px); }
+
+.player .p-head {
+  display:flex; align-items:center; justify-content:space-between;
+  margin-bottom:8px;
+}
+.player .p-label { font-size:12.5px; font-weight:700; color:var(--muted); letter-spacing:.3px; }
+
+/* 【修复 4】删除按钮迷你且难按 → 44×44 触摸区，视觉仍是小 × */
+.player .del {
+  width:var(--tap); height:var(--tap); margin:-10px -8px -10px 0;
+  display:grid; place-items:center;
+  font-size:17px; line-height:1; color:var(--muted);
+  background:none; border:none; border-radius:50%; cursor:pointer;
+  transition:.15s;
+}
+.player .del:hover, .player .del:active { color:var(--brand); background:var(--brand-soft); }
+
+/* 【修复 5】姓名+终局分在极窄屏被挤爆 → 用 grid 固定比例，分数列有下限 */
+.player .row1 {
+  display:grid; gap:8px;
+  grid-template-columns: minmax(0,1.35fr) minmax(88px,1fr);
+}
+.player .name, .player .score {
+  min-width:0; font-size:16px; width:100%;
+  border:1px solid var(--line); border-radius:var(--r-sm);
+  padding:11px 12px; background:var(--card); color:var(--ink);
+}
+.player .score { text-align:right; font-variant-numeric: tabular-nums; font-weight:600; }
+.player .name:focus, .player .score:focus {
+  outline:none; border-color:var(--sec);
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--sec) 16%, transparent);
+}
+
+.player .row2 {
+  display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center;
+  margin-top:9px; font-size:13px; color:var(--ink-2);
+}
+/* 【修复 6】复选框触摸区太小 → 撑到 44px 高 */
+.player .row2 label {
+  display:inline-flex; align-items:center; gap:7px;
+  min-height:var(--tap); cursor:pointer; user-select:none;
+  padding:0 2px;
+}
+.player .row2 input[type=checkbox] {
+  width:20px; height:20px; accent-color:var(--brand); flex:0 0 auto; margin:0;
+}
+.player .init-field { display:inline-flex; align-items:center; gap:6px; }
+.player .pinit {
+  width:74px; font-size:15px; border:1px solid var(--line);
+  border-radius:8px; padding:9px 8px; text-align:right;
+  background:var(--card); color:var(--ink); font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 按钮 ---------- */
+.add {
+  display:block; width:100%; min-height:var(--tap);
+  font-size:14.5px; font-weight:600; color:var(--sec);
+  background:var(--sec-soft); border:1.5px dashed color-mix(in srgb, var(--sec) 45%, transparent);
+  border-radius:var(--r-md); padding:10px; cursor:pointer;
+  margin-bottom:10px; transition:.15s;
+}
+.add:hover:not(:disabled) { border-style:solid; }
+.add:disabled { color:var(--muted); background:var(--line-2); border-color:var(--line); cursor:not-allowed; }
+
+.btn-primary {
+  display:block; width:100%; min-height:50px;
+  font-size:clamp(16px, 4.4vw, 17px); font-weight:700; color:#fff;
+  background:linear-gradient(180deg, var(--brand), var(--brand-deep));
+  border:none; border-radius:var(--r-md); padding:14px; cursor:pointer;
+  box-shadow:0 2px 8px rgba(232,68,46,.25);
+  transition:transform .1s, opacity .15s, box-shadow .15s;
+}
+.btn-primary:active:not(:disabled) { transform:translateY(1px); box-shadow:0 1px 4px rgba(232,68,46,.2); }
+.btn-primary:disabled {
+  background:var(--line); color:var(--muted);
+  box-shadow:none; cursor:not-allowed;
+}
+
+/* ---------- 状态条：左侧色条强化语义 ---------- */
+.status {
+  font-size:13.5px; padding:10px 12px; border-radius:var(--r-sm);
+  margin-bottom:11px; line-height:1.5;
+  border-left:3.5px solid currentColor;
+  display:flex; gap:8px; align-items:flex-start;
+}
+.status.ok   { color:var(--ok);    background:var(--ok-soft); }
+.status.bad  { color:var(--brand); background:var(--brand-soft); }
+.status.warn { color:var(--warn);  background:var(--warn-soft); }
+.status.idle { color:var(--muted); background:var(--line-2); }
+
+/* ---------- 结果区 ---------- */
+.result-block { display:none; }
+.result-block.show {
+  display:block;
+  border-top:none;
+  box-shadow:var(--shadow-2);
+  position:relative; overflow:hidden;
+}
+.result-block.show::before {
+  content:""; position:absolute; inset:0 0 auto 0; height:3.5px;
+  background:linear-gradient(90deg, var(--brand), #ff9a3c, var(--ok));
+}
+/* 【修复 7】原版结果区根字号写死 clamp(11.5px,3.8vw,15.5px)，
+   在 320px 屏只有 12.2px、在大屏封顶 15.5px，两端都别扭。
+   改为随容器流体 + 下限 13px，保证可读。 */
+.result-block.show { font-size: clamp(13px, 3.9vw, 15.5px); }
+
+.meta-info {
+  font-size:0.82em; line-height:1.75; color:var(--muted);
+  margin:6px 0 14px; padding:0 0 0 2px;
+}
+.meta-info b { color:var(--ink-2); font-weight:600; }
+
+.sub-head {
+  font-size:1.06em; font-weight:700; color:var(--ink);
+  margin:16px 0 9px; display:flex; align-items:center; gap:7px;
+}
+.sub-head .ic { font-size:1.05em; }
+
+/* 战绩榜单 */
+.net-list {
+  border:1px solid var(--line); border-radius:var(--r-md);
+  overflow:hidden; background:var(--card);
+}
+.net-row {
+  padding:11px 13px; border-bottom:1px solid var(--line-2);
+  position:relative;
+}
+.net-row:last-child { border-bottom:none; }
+/* 名次色条 */
+.net-row::before {
+  content:""; position:absolute; left:0; top:0; bottom:0; width:3px;
+  background:var(--line);
+}
+.net-row.r-win::before  { background:var(--ok); }
+.net-row.r-lose::before { background:var(--brand); }
+.net-row.r-zero::before { background:var(--muted); }
+
+.net-line { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+.net-name { font-size:1.2em; font-weight:700; min-width:0; overflow-wrap:anywhere; }
+.net-score { font-size:1.5em; font-weight:800; line-height:1.1; font-variant-numeric:tabular-nums; flex:0 0 auto; }
+.ns-win  { color:var(--ok); }
+.ns-lose { color:var(--brand); }
+.ns-zero { color:var(--muted); }
+
+.net-big { font-size:1.1em; font-weight:700; margin-top:3px; }
+.net-win  { color:var(--ok); }
+.net-lose { color:var(--brand); }
+.net-zero { color:var(--muted); }
+
+/* 【修复 8】原版明细小字长句在窄屏会断出孤零零的「）」。
+   改为 block + 合理断行，并把台费附加项拆成独立小标签。 */
+.net-small {
+  font-size:0.85em; color:var(--muted); margin-top:5px;
+  line-height:1.6; overflow-wrap:anywhere;
+}
+.net-small .tag {
+  display:inline-block; font-size:.92em; padding:1px 6px; margin-left:4px;
+  border-radius:5px; background:var(--line-2); color:var(--ink-2);
+  white-space:nowrap;
+}
+
+/* 转账方案 */
+.plan-card {
+  border:1px solid var(--line); border-radius:var(--r-md);
+  padding:4px 13px 10px; background:var(--card); margin-bottom:10px;
+}
+.x-line {
+  display:flex; align-items:center; gap:9px;
+  font-size:1.02em; color:var(--ink);
+  padding:12px 0; border-bottom:1px dashed var(--line);
+  min-height:var(--tap);
+}
+.x-line:last-of-type { border-bottom:none; }
+.x-line .x-idx {
+  flex:0 0 auto; display:grid; place-items:center;
+  width:22px; height:22px; border-radius:50%;
+  background:var(--sec-soft); color:var(--sec);
+  font-size:.78em; font-weight:700;
+}
+/* 【修复 9】原版用「名字 → 名字 金额」，长名字会把金额挤下移。
+   改为 flex 三段式，名字可收缩，金额永不被挤走。 */
+.x-line .x-path { flex:1 1 auto; min-width:0; overflow-wrap:anywhere; }
+.x-line .x-path .arrow { color:var(--sec); font-weight:700; margin:0 .32em; }
+.x-line .x-amt {
+  flex:0 0 auto; font-weight:800; color:var(--ink);
+  font-variant-numeric:tabular-nums; white-space:nowrap;
+}
+.plan-meta {
+  font-size:.84em; color:var(--muted); margin:9px 0 0;
+  padding-top:9px; border-top:1px solid var(--line-2);
+  display:flex; align-items:center; gap:6px;
+}
+
+.ph {
+  font-size:.95em; color:var(--muted); background:var(--card-2);
+  border:1px dashed var(--line); border-radius:var(--r-md);
+  padding:18px; text-align:center; margin:6px 0 12px;
+}
+.err {
+  color:var(--brand); background:var(--brand-soft);
+  border:1px solid color-mix(in srgb, var(--brand) 35%, transparent);
+  border-radius:var(--r-md); padding:12px 13px; font-size:.95em; line-height:1.7;
+}
+.err div { margin:.12em 0; }
+.mini { font-size:.8em; color:var(--muted); margin-top:10px; text-align:center; }
+
+.share-row { display:flex; gap:10px; margin-top:14px; }
+.share-row .btn-primary { flex:1; }
+
+footer {
+  font-size:11.5px; color:var(--muted); text-align:center;
+  margin-top:6px; padding-bottom:4px;
+}
+
+/* ---------- Toast ---------- */
+.toast {
+  position:fixed; left:50%; transform:translateX(-50%);
+  bottom:calc(26px + env(safe-area-inset-bottom, 0px));
+  background:rgba(31,35,41,.94); color:#fff; font-size:13.5px;
+  padding:11px 20px; border-radius:999px; opacity:0;
+  transition:opacity .2s, transform .2s; pointer-events:none; z-index:99;
+  max-width:calc(100vw - 40px);
+}
+.toast.show { opacity:1; transform:translateX(-50%) translateY(-4px); }
+
+/* ============================================================================
+   响应式：只保留「内容真的需要变」的断点。
+   原版有 400/340/480 三段，顺序 400 → 340 → 480（非降序），
+   且 480 段的 #inputArea .card{padding:14px}（ID 特异性 0,1,1）
+   会压过 340 段的 .card{padding:12px}（0,0,1）——极窄屏的收紧静默失效。
+   改版策略：能流体就流体（clamp），只在必要处留断点，且按降序排列。
+   ========================================================================== */
+
+/* 屏幕很矮时（横屏手机 / 小屏），压缩纵向节奏 */
+@media (max-height: 560px) and (orientation: landscape) {
+  body { max-width: 720px; }
+  .player .row1 { grid-template-columns: minmax(0,1.6fr) minmax(96px,1fr); }
+}
+
+/* 极窄屏（≤330px，如 iPhone SE 一代 / 老安卓） */
+@media (max-width: 330px) {
+  .ratio-chips { grid-template-columns: repeat(2, minmax(0,1fr)); }  /* 4 列改 2×2 */
+  .player .row1 { grid-template-columns: minmax(0,1fr); gap:7px; }   /* 姓名/分数改上下堆叠 */
+  .player .score { text-align:left; }
+  .net-score { font-size:1.35em; }
+}
+
+/* 大屏 / 平板：结果区可放宽，利用横向空间 */
+@media (min-width: 560px) {
+  .net-list { display:grid; grid-template-columns:1fr 1fr; }
+  .net-row { border-bottom:1px solid var(--line-2); }
+  .net-row:nth-child(odd) { border-right:1px solid var(--line-2); }
+  .net-row:nth-last-child(-n+2) { border-bottom:none; }
+}
+
+/* 减少动效偏好 */
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration:.01ms !important; transition-duration:.01ms !important; }
+}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <h1><span class="tile">🀄</span>麻将算账助手</h1>
+  <div class="sub">填终局分与台费，一键算清谁给谁转多少</div>
+</div>
+
+<!-- ① 牌局设置 -->
+<div id="inputArea">
+  <div class="card">
+    <div class="sec-head"><span class="sec-tag">区块一</span><h2 class="sec-title">牌局设置</h2></div>
+
+    <div class="field">
+      <label for="dateInput">牌局日期</label>
+      <input type="date" id="dateInput">
+    </div>
+    <div class="field">
+      <label for="timeInput">结算时间</label>
+      <input type="time" id="timeInput">
+    </div>
+
+    <div style="padding:11px 0 3px;">
+      <div style="font-size:14.5px;margin-bottom:9px;">底分换算</div>
+      <div class="ratio-chips">
+        <label class="chip on"><input type="radio" name="ratio" value="0.1" checked><span>一毛底</span></label>
+        <label class="chip"><input type="radio" name="ratio" value="0.5"><span>五毛底</span></label>
+        <label class="chip"><input type="radio" name="ratio" value="1"><span>一块底</span></label>
+        <label class="chip"><input type="radio" name="ratio" value="__other__"><span>自定义</span></label>
+      </div>
+      <input type="number" step="0.01" id="ratioInput" class="ratio-custom"
+             placeholder="1 底分 = ？元（如 2.5）" style="display:none" inputmode="decimal">
+    </div>
+
+    <div class="field" style="border-top:1px solid var(--line-2);">
+      <label for="initInput">起始分</label>
+      <span class="init-mode" style="display:inline-flex;flex:0 0 auto;">
+        <select id="initModeSel" aria-label="起始分模式"
+                style="font-size:13px;color:var(--muted);background:var(--card-2);
+                       border:1px solid var(--line);border-radius:8px;padding:8px 6px;">
+          <option value="unified">统一</option>
+          <option value="custom">自定义</option>
+        </select>
+      </span>
+      <input type="number" step="1" id="initInput" value="300" inputmode="numeric">
+    </div>
+  </div>
+
+  <!-- ② 对局表现 -->
+  <div class="card">
+    <div class="sec-head"><span class="sec-tag">区块二</span><h2 class="sec-title">对局表现</h2></div>
+
+    <div class="field" style="border-bottom:none;">
+      <label for="feeInput">台费<span class="hint">元</span></label>
+      <input type="number" step="0.1" id="feeInput" value="0" inputmode="decimal">
+    </div>
+
+    <div style="font-size:12.5px;color:var(--muted);text-align:right;margin:-2px 0 12px;">
+      「垫付」单选，「免除」可多选
+    </div>
+
+    <div id="playerList"></div>
+
+    <button class="add" id="addBtn" type="button">＋ 添加牌手</button>
+    <div id="liveStatus" class="status idle">填写终局分后自动校验</div>
+    <button class="btn-primary" id="genBtn" type="button">生成结果</button>
+  </div>
+</div>
+
+<!-- ③ 终局计分 -->
+<div class="card result-block" id="resultBlock"></div>
+
+<footer>mahjong-tally-helper · 算法 by 墨华 · UI v1.1</footer>
+<div class="toast" id="toast"></div>
+
+<script type="module">
+/* ============================================================================
+   算法层 —— 与原版逐字一致（未做任何改动，保证计算结果完全相同）
+   ========================================================================== */
+
+function bruteMinCount(net) {
+  const start = Object.values(net).filter((c) => c !== 0);
+  const memo = new Map();
+  function dfs(state) {
+    if (state.length === 0) return 0;
+    const key = state.slice().sort((a, b) => a - b).join(",");
+    if (memo.has(key)) return memo.get(key);
+    const i = state.findIndex((c) => c !== 0);
+    let best = Infinity;
+    for (let j = 0; j < state.length; j++) {
+      if (j === i) continue;
+      if ((state[i] > 0) !== (state[j] > 0)) {
+        const pay = Math.min(Math.abs(state[i]), Math.abs(state[j]));
+        const next = state.slice();
+        if (state[i] > 0) next[i] -= pay; else next[i] += pay;
+        if (state[j] > 0) next[j] -= pay; else next[j] += pay;
+        const filt = next.filter((c) => c !== 0);
+        best = Math.min(best, 1 + dfs(filt));
+      }
+    }
+    memo.set(key, best);
+    return best;
+  }
+  const r = dfs(start);
+  return r === Infinity ? 0 : r;
+}
+
+function enumerateMinSettlements(net, minCount) {
+  const startNames = Object.keys(net);
+  const start = startNames.map((name) => ({ name, c: net[name] })).filter((x) => x.c !== 0);
+  const results = [];
+  const seen = new Set();
+  function dfs(state, depth, plan) {
+    if (depth === minCount) {
+      if (state.every((s) => s.c === 0)) {
+        const key = JSON.stringify(plan.map((p) => `${p.from}>${p.to}:${p.amountCents}`).sort());
+        if (!seen.has(key)) { seen.add(key); results.push(plan.slice()); }
+      }
+      return;
+    }
+    const i = state.findIndex((s) => s.c !== 0);
+    if (i < 0) return;
+    for (let j = 0; j < state.length; j++) {
+      if (j === i) continue;
+      if ((state[i].c > 0) !== (state[j].c > 0)) {
+        const pay = Math.min(Math.abs(state[i].c), Math.abs(state[j].c));
+        const from = state[i].c > 0 ? state[j].name : state[i].name;
+        const to = state[i].c > 0 ? state[i].name : state[j].name;
+        const next = state.map((s) => ({ name: s.name, c: s.c }));
+        if (state[i].c > 0) next[i].c -= pay; else next[i].c += pay;
+        if (state[j].c > 0) next[j].c -= pay; else next[j].c += pay;
+        plan.push({ from, to, amountCents: pay });
+        dfs(next, depth + 1, plan);
+        plan.pop();
+      }
+    }
+  }
+  dfs(start, 0, []);
+  return results;
+}
+
+function ceilJiaoInt(T, m) {
+  return Math.floor((T + 10 * m - 1) / (10 * m)) * 10;
+}
+
+function buildMergedNet({ players, initialScore, ratio, feeCents }) {
+  const warnings = [];
+  const K = Math.round(ratio * 100);
+  if (K <= 0 || Math.abs(ratio * 100 - K) > 1e-9) {
+    return { ok: false, error: `分值换算需为 0.01 的整数倍且大于 0（ratio=${ratio} 非法）`, warnings, mergedCents: {}, scoreNetCents: {}, feeNetCents: {}, feeShares: {} };
+  }
+  const effInit = {};
+  for (const p of players) {
+    const init = (p.initialScore != null) ? p.initialScore : initialScore;
+    if (!Number.isInteger(init) || init < 0) {
+      return { ok: false, error: `玩家 ${p.name} 起始分须为非负整数（initialScore=${init} 非法）`, warnings, mergedCents: {}, scoreNetCents: {}, feeNetCents: {}, feeShares: {} };
+    }
+    effInit[p.name] = init;
+  }
+  const sumFinal = players.reduce((a, p) => a + p.finalScore, 0);
+  const sumInit = players.reduce((a, p) => a + effInit[p.name], 0);
+  if (sumFinal !== sumInit) {
+    const adj = sumInit >= sumFinal ? `需加上${sumInit - sumFinal}` : `需减去${sumFinal - sumInit}`;
+    return { ok: false, error: `⚠️ 终局分校验失败！应为${sumInit}，当前${sumFinal}，${adj}，请检查哪一项填错`, warnings, mergedCents: {}, scoreNetCents: {}, feeNetCents: {}, feeShares: {} };
+  }
+  const scoreNetCents = {};
+  for (const p of players) scoreNetCents[p.name] = (p.finalScore - effInit[p.name]) * K;
+  const feeNetCents = {};
+  const feeShares = {};
+  const prepayer = players.find((p) => p.prepaid);
+  if (feeCents > 0) {
+    if (!prepayer) {
+      return { ok: false, error: "请指定台费垫付人（台费 > 0 时必填，TC-19）", warnings, mergedCents: {}, scoreNetCents, feeNetCents, feeShares };
+    }
+    const effectiveExempt = new Set(players.filter((p) => p.exempted).map((p) => p.name));
+    const prepayerExempt = effectiveExempt.has(prepayer.name);
+    const splitters = players.filter((p) => !effectiveExempt.has(p.name)).map((p) => p.name);
+    const m = splitters.length;
+    if (m === 0) {
+      return { ok: false, error: "台费无人分摊，请检查免除名单（TC-20）", warnings, mergedCents: {}, scoreNetCents, feeNetCents, feeShares };
+    }
+    const eachNonPrep = ceilJiaoInt(feeCents, m);
+    let prepReceivable = 0;
+    let lastSplitter = null;
+    for (const name of splitters) {
+      if (name === prepayer.name) continue;
+      feeShares[name] = eachNonPrep;
+      feeNetCents[name] = -eachNonPrep;
+      prepReceivable += eachNonPrep;
+      lastSplitter = name;
+    }
+    if (prepayerExempt) {
+      if (lastSplitter != null) {
+        const over = prepReceivable - feeCents;
+        if (over > 0) {
+          feeShares[lastSplitter] = eachNonPrep - over;
+          feeNetCents[lastSplitter] = -(eachNonPrep - over);
+          prepReceivable -= over;
+        }
+      }
+      feeShares[prepayer.name] = null;
+      feeNetCents[prepayer.name] = prepReceivable;
+    } else {
+      const prepShare = feeCents - eachNonPrep * (m - 1);
+      feeShares[prepayer.name] = prepShare;
+      feeNetCents[prepayer.name] = prepReceivable;
+    }
+    for (const name of effectiveExempt) {
+      if (name === prepayer.name) continue;
+      feeShares[name] = null;
+      feeNetCents[name] = 0;
+    }
+  } else {
+    for (const p of players) { feeShares[p.name] = 0; feeNetCents[p.name] = 0; }
+  }
+  const mergedCents = {};
+  for (const p of players) mergedCents[p.name] = (scoreNetCents[p.name] || 0) + (feeNetCents[p.name] || 0);
+  return { ok: true, warnings, mergedCents, scoreNetCents, feeNetCents, feeShares };
+}
+
+function computeO2Score(plan, net) {
+  const outdeg = {};
+  for (const name of Object.keys(net)) outdeg[name] = 0;
+  for (const t of plan) outdeg[t.from]++;
+  const winners = Object.entries(net).filter(([, c]) => c > 0).map(([name, c]) => ({ name, abs: c }));
+  let W = null, Wa = -1;
+  for (const w of winners) { if (w.abs > Wa) { Wa = w.abs; W = w.name; } }
+  const biggestWinnerOutdeg = W ? outdeg[W] : 0;
+  const winnerOutdegCount = winners.filter((w) => outdeg[w.name] > 0).length;
+  const maxWinnerOutdeg = winners.length ? Math.max(...winners.map((w) => outdeg[w.name])) : 0;
+  const globalMaxOutdeg = Math.max(0, ...Object.values(outdeg));
+  return [biggestWinnerOutdeg, winnerOutdegCount, maxWinnerOutdeg, globalMaxOutdeg];
+}
+function lexLess(a, b) {
+  for (let i = 0; i < a.length; i++) { if (a[i] !== b[i]) return a[i] < b[i]; }
+  return false;
+}
+function settle(net) {
+  const min = bruteMinCount(net);
+  if (min === 0) return { transfers: [], count: 0, score: [0, 0, 0] };
+  const plans = enumerateMinSettlements(net, min);
+  let best = plans[0], bestScore = computeO2Score(best, net);
+  for (const p of plans) {
+    const s = computeO2Score(p, net);
+    if (lexLess(s, bestScore)) { bestScore = s; best = p; }
+  }
+  return { transfers: best, count: min, score: bestScore };
+}
+
+/* ============================================================================
+   表现层 —— 以下为 v1.1 重写部分
+   ========================================================================== */
+
+const MIN = 2, MAX = 6;
+const DEFAULT_NAMES = ["甲", "乙", "丙", "丁", "戊", "己"];
+
+let players = DEFAULT_NAMES.slice(0, 4).map((nm) => ({ name: nm, score: "", pinit: "300", prepaid: false, exempted: false }));
+let initMode = "unified";
+
+const $ = (id) => document.getElementById(id);
+const yuan = (cents) => (cents / 100).toFixed(1);
+const signedYuan = (c) => c > 0 ? `+${yuan(c)}` : c < 0 ? `−${yuan(-c)}` : "0";
+
+const displayName = (key) => {
+  const i = Number(String(key).slice(1));
+  return (players[i - 1] && players[i - 1].name.trim()) || key;
+};
+const playerOf = (key) => players[Number(String(key).slice(1)) - 1];
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function escapeAttr(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function syncFromDOM() {
+  const rows = document.querySelectorAll("#playerList .player");
+  rows.forEach((row, i) => {
+    if (!players[i]) return;
+    players[i].name = row.querySelector(".name").value;
+    players[i].score = row.querySelector(".score").value;
+    if (initMode === "custom") players[i].pinit = row.querySelector(".pinit").value;
+    players[i].prepaid = row.querySelector(".prepaid").checked;
+    players[i].exempted = row.querySelector(".exempted").checked;
+  });
+}
+
+function renderPlayers() {
+  const list = $("playerList");
+  list.innerHTML = "";
+  players.forEach((p, i) => {
+    const div = document.createElement("div");
+    div.className = "player";
+    const initField = initMode === "custom"
+      ? `<label class="init-field">起始分<input class="pinit" type="number" step="1" value="${escapeAttr(p.pinit)}" placeholder="300" inputmode="numeric"></label>`
+      : "";
+    div.innerHTML = `
+      <div class="p-head">
+        <span class="p-label">牌手 ${i + 1}</span>
+        <button class="del" type="button" title="移除该牌手" aria-label="移除牌手 ${i + 1}">✕</button>
+      </div>
+      <div class="row1">
+        <input class="name" value="${escapeAttr(p.name)}" placeholder="姓名" aria-label="牌手 ${i + 1} 姓名">
+        <input class="score" type="number" step="1" value="${escapeAttr(p.score)}" placeholder="终局分" inputmode="numeric" aria-label="牌手 ${i + 1} 终局分">
+      </div>
+      <div class="row2">
+        ${initField}
+        <label><input type="checkbox" class="prepaid" ${p.prepaid ? "checked" : ""}> 垫付</label>
+        <label><input type="checkbox" class="exempted" ${p.exempted ? "checked" : ""}> 免除</label>
+      </div>`;
+
+    div.querySelector(".del").addEventListener("click", () => {
+      if (players.length <= MIN) return;
+      const player = players[i];
+      div.classList.add("removing");
+      setTimeout(() => {
+        const idx = players.indexOf(player);
+        if (idx < 0) return;
+        syncFromDOM();
+        players.splice(idx, 1);
+        renderPlayers();
+        liveValidate();
+      }, 300);
+    });
+
+    const prepaidInput = div.querySelector(".prepaid");
+    prepaidInput.addEventListener("change", () => {
+      if (prepaidInput.checked) {
+        players.forEach((other, j) => { if (j !== i) other.prepaid = false; });
+        document.querySelectorAll("#playerList .player .prepaid").forEach((el, j) => { if (j !== i) el.checked = false; });
+      }
+      players[i].prepaid = prepaidInput.checked;
+      const sx = div.querySelector(".exempted");
+      players[i].exempted = sx.checked;
+      liveValidate();
+    });
+
+    list.appendChild(div);
+  });
+  $("addBtn").disabled = players.length >= MAX;
+  $("addBtn").textContent = players.length >= MAX ? `已达上限 ${MAX} 人` : "＋ 添加牌手";
+}
+
+function readGame() {
+  const ratioRadio = document.querySelector('input[name=ratio]:checked');
+  const ratioRaw = (ratioRadio && ratioRadio.value === "__other__") ? $("ratioInput").value.trim() : (ratioRadio ? ratioRadio.value : "");
+  const initRaw = $("initInput").value.trim();
+  const feeRaw = $("feeInput").value.trim();
+  const ratio = ratioRaw === "" ? NaN : Number(ratioRaw);
+  const initScore = initRaw === "" ? NaN : Number(initRaw);
+  const fee = feeRaw === "" ? 0 : Number(feeRaw);
+  return {
+    date: $("dateInput").value,
+    time: $("timeInput").value,
+    ratio, initScore, fee,
+    feeCents: Math.round((isNaN(fee) ? 0 : fee) * 100),
+  };
+}
+
+function validate() {
+  syncFromDOM();
+  const g = readGame();
+  const issues = [];
+
+  if (players.length < MIN || players.length > MAX) issues.push(`参与人数须在 ${MIN}~${MAX} 人之间（当前 ${players.length}）`);
+  players.forEach((p, i) => { if (!p.name.trim()) issues.push(`第 ${i + 1} 名牌手未填姓名`); });
+
+  if (isNaN(g.ratio)) issues.push("底分换算须为数字（如 1.00 / 0.50 / 0.10，或选预设底）");
+  else if (g.ratio <= 0) issues.push("底分换算须大于 0");
+  else {
+    const K = Math.round(g.ratio * 100);
+    if (Math.abs(g.ratio * 100 - K) > 1e-9) issues.push("底分换算需为 0.01 的整数倍（如 0.333 不合法）");
+  }
+
+  if (!Number.isInteger(g.initScore) || g.initScore < 0) issues.push("起始分须为非负整数");
+
+  players.forEach((p, i) => {
+    const v = p.score.trim();
+    if (v === "") { issues.push(`第 ${i + 1} 名牌手终局分未填`); return; }
+    if (!Number.isInteger(Number(v))) issues.push(`第 ${i + 1} 名牌手终局分请填整数（小数/非数字会被拒绝）`);
+  });
+
+  if (initMode === "custom") {
+    players.forEach((p, i) => {
+      const ip = p.pinit.trim();
+      if (ip === "") { issues.push(`第 ${i + 1} 名牌手起始分未填`); return; }
+      const ni = Number(ip);
+      if (!Number.isInteger(ni) || ni < 0) issues.push(`第 ${i + 1} 名牌手起始分须为非负整数`);
+    });
+  }
+
+  if (!(g.fee >= 0)) issues.push("台费金额须为非负数值");
+  const prepaidCount = players.filter((p) => p.prepaid).length;
+  if (g.feeCents > 0 && prepaidCount === 0) issues.push("请指定台费垫付人（台费 > 0 时必填）");
+  if (g.feeCents > 0 && prepaidCount > 1) issues.push("本版仅支持单一垫付人，请只选一位垫付");
+  const splitterCount = players.filter((p) => !p.exempted).length;
+  if (g.feeCents > 0 && prepaidCount > 0 && splitterCount === 0) {
+    issues.push("台费无人分摊，请检查免除名单（至少保留一位未免除的牌手）");
+  }
+  return { g, issues };
+}
+
+function liveValidate() {
+  const { g, issues } = validate();
+  const status = $("liveStatus");
+  if (issues.length) {
+    status.className = "status bad";
+    status.textContent = issues[0];
+    $("genBtn").disabled = true;
+    return false;
+  }
+  const finals = players.map((p) => Number(p.score.trim()));
+  const sumF = finals.reduce((a, b) => a + b, 0);
+  const sumI = (initMode === "custom")
+    ? players.reduce((a, p) => a + Number(p.pinit.trim()), 0)
+    : players.length * g.initScore;
+  if (sumF === sumI) {
+    status.className = "status ok";
+    status.textContent = "✅ 终局分校验通过，可生成结果";
+    $("genBtn").disabled = false;
+    return true;
+  }
+  status.className = "status bad";
+  const basis = initMode === "custom" ? "各人起始分之和" : "人数 × 起始分";
+  const adj = sumI >= sumF ? `需加上${sumI - sumF}` : `需减去${sumF - sumI}`;
+  status.textContent = `⚠️ 终局分校验失败！应为${sumI}，当前${sumF}，${adj}，请检查哪一项填错`;
+  $("genBtn").disabled = true;
+  return false;
+}
+
+function renderError(issues) {
+  const block = $("resultBlock");
+  block.className = "card result-block show";
+  block.innerHTML = `<div class="sec-head"><span class="sec-tag">区块三</span><h2 class="sec-title">终局计分</h2></div>
+    <div class="err">${issues.map((x) => `<div>⚠️ ${escapeHtml(x)}</div>`).join("")}</div>`;
+  block.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function netScoreOf(name, g) {
+  const pp = playerOf(name);
+  const effInit = initMode === "custom" ? (pp ? Number(pp.pinit) : 0) : (g ? g.initScore : 0);
+  return pp ? (Number(pp.score) - effInit) : 0;
+}
+function rankLabel(i) {
+  const medals = ["🥇", "🥈", "🥉"];
+  return i < 3 ? medals[i] : "🏅";
+}
+
+function buildText(g, merged, result) {
+  const names = Object.keys(merged.mergedCents);
+  const dateText = g.date || "（未填日期）";
+  const timeText = g.time || "（未填时间）";
+  const ranked = names.slice().sort((a, b) => netScoreOf(b, g) - netScoreOf(a, g));
+
+  let out = `${dateText}  ${timeText}\n牌局报告\n`;
+  out += "\n【战绩榜单】\n";
+  ranked.forEach((name, i) => {
+    const ns = netScoreOf(name, g);
+    out += `${rankLabel(i)}  ${displayName(name)}  ${ns > 0 ? `+${ns}` : `${ns}`}\n`;
+  });
+  out += "\n【转账方案】\n";
+  if (result.transfers.length === 0) {
+    out += "本局无输赢，无需转账 ✓\n";
+  } else {
+    for (const t of result.transfers) {
+      out += `${displayName(t.from)} ➔ ${displayName(t.to)}  ${yuan(t.amountCents)} 元\n`;
+    }
+  }
+  out += "\n────────────\n麻将算账助手 v1.0\nby 墨华";
+  return out;
+}
+
+function generate() {
+  const { g, issues } = validate();
+  if (issues.length) { renderError(issues); return; }
+
+  const input = {
+    players: players.map((p, i) => {
+      const obj = {
+        name: `p${i + 1}`,
+        finalScore: Number(p.score.trim()),
+        prepaid: p.prepaid,
+        exempted: p.exempted,
+      };
+      if (initMode === "custom") obj.initialScore = Number(p.pinit.trim());
+      return obj;
+    }),
+    initialScore: g.initScore,
+    ratio: g.ratio,
+    feeCents: g.feeCents,
+  };
+
+  let merged;
+  try { merged = buildMergedNet(input); }
+  catch (e) { renderError([e.message]); return; }
+  if (!merged.ok) { renderError([merged.error]); return; }
+
+  const result = settle(merged.mergedCents);
+  renderResult(g, merged, result);
+}
+
+function renderResult(g, merged, result) {
+  const block = $("resultBlock");
+  const names = Object.keys(merged.mergedCents);
+  const rankedNames = names.slice().sort((a, b) => netScoreOf(b, g) - netScoreOf(a, g));
+
+  const ratioNum = parseFloat(g.ratio);
+  const baseName = (r) => {
+    if (r === 0.1) return "一毛底";
+    if (r === 0.5) return "五毛底";
+    if (r === 1) return "一块底";
+    return `1底分=${isNaN(r) ? "?" : r}元`;
+  };
+  const dateStr = g.date || "（未填日期）";
+  const timeStr = g.time || "（未填时间）";
+  const initVal = isNaN(g.initScore) ? "?" : g.initScore;
+  const initLabel = initMode === "custom" ? `每人起始分 ${initVal} 或自定义` : `起始分 ${initVal}`;
+  const prepaidPlayer = players.find((p) => p.prepaid);
+
+  const metaLine =
+    `<b>${escapeHtml(dateStr)}</b> ${escapeHtml(timeStr)}` +
+    ` · ${escapeHtml(baseName(ratioNum))}` +
+    ` · ${escapeHtml(initLabel)}` +
+    (prepaidPlayer ? `<br>台费 ${yuan(g.feeCents)} 元 · 由 <b>${escapeHtml(displayName(prepaidPlayer.name))}</b> 垫付` : "");
+
+  let netRows = "";
+  for (const name of rankedNames) {
+    const sc = merged.scoreNetCents[name];
+    const fc = merged.feeNetCents[name];
+    const mc = merged.mergedCents[name];
+    const pp = playerOf(name);
+    const isPrepaid = !!(pp && pp.prepaid);
+    const finalScore = pp ? Number(pp.score) : 0;
+    const initScore = initMode === "custom" ? (pp ? Number(pp.pinit) : 0) : g.initScore;
+    const netScore = finalScore - initScore;
+
+    let nsCls, nsText, rowCls;
+    if (netScore > 0) { nsCls = "ns-win"; nsText = `+${netScore}`; rowCls = "r-win"; }
+    else if (netScore < 0) { nsCls = "ns-lose"; nsText = `${netScore}`; rowCls = "r-lose"; }
+    else { nsCls = "ns-zero"; nsText = "0"; rowCls = "r-zero"; }
+
+    const feeOp = fc > 0 ? "+" : "−";
+    const feeMag = yuan(Math.abs(fc));
+    let detail = `胜负 ${signedYuan(sc)} ${feeOp} 台费 ${feeMag} = <b>${signedYuan(mc)}</b>`;
+    if (isPrepaid && g.feeCents > 0) {
+      const actualCost = merged.feeShares[name] != null ? merged.feeShares[name] : 0;
+      detail += `<span class="tag">实际自付 ${yuan(actualCost)}</span>`;
+    }
+
+    let bigCls, bigLabel;
+    if (mc > 0) { bigCls = "net-win"; bigLabel = `应收 ${yuan(mc)} 元`; }
+    else if (mc < 0) { bigCls = "net-lose"; bigLabel = `应付 ${yuan(-mc)} 元`; }
+    else { bigCls = "net-zero"; bigLabel = "平（不收不付）"; }
+
+    netRows += `<div class="net-row ${rowCls}">
+      <div class="net-line">
+        <span class="net-name">${escapeHtml(displayName(name))}</span>
+        <span class="net-score ${nsCls}">${nsText}</span>
+      </div>
+      <div class="net-big ${bigCls}">${bigLabel}</div>
+      ${g.feeCents > 0 ? `<div class="net-small">${detail}</div>` : ``}
+    </div>`;
+  }
+
+  let planRows = "";
+  if (result.transfers.length === 0) {
+    planRows = `<div class="ph">本局无输赢，无需转账 ✓</div>`;
+  } else {
+    result.transfers.forEach((t, i) => {
+      planRows += `<div class="x-line">
+        <span class="x-idx">${i + 1}</span>
+        <span class="x-path">${escapeHtml(displayName(t.from))}<span class="arrow">→</span>${escapeHtml(displayName(t.to))}</span>
+        <span class="x-amt">${yuan(t.amountCents)} 元</span>
+      </div>`;
+    });
+  }
+
+  block.className = "card result-block show";
+  block.innerHTML = `
+    <div class="sec-head"><span class="sec-tag">区块三</span><h2 class="sec-title">终局计分</h2></div>
+    <p class="meta-info">${metaLine}</p>
+
+    <p class="sub-head"><span class="ic">🏆</span>战绩榜单</p>
+    <div class="net-list">${netRows}</div>
+
+    <p class="sub-head"><span class="ic">💸</span>转账方案</p>
+    <div class="plan-card">${planRows}<div class="plan-meta">共 ${result.count} 笔转账${result.count > 0 ? " · 已是最少笔数" : ""}</div></div>
+
+    <div class="share-row">
+      <button class="btn-primary" id="copyBtn" style="background:linear-gradient(180deg,var(--sec),#1e56d6);box-shadow:0 2px 8px rgba(43,108,255,.25);">📤 导出战报</button>
+    </div>
+    <p class="mini">如需完整明细，请截屏当前页</p>`;
+
+  $("copyBtn").addEventListener("click", () => copyText(buildText(g, merged, result)));
+  block.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function copyText(text) {
+  const done = () => showToast("已复制到剪贴板");
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+  } else {
+    fallbackCopy(text, done);
+  }
+}
+function fallbackCopy(text, done) {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed"; ta.style.opacity = "0"; ta.style.top = "0";
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  try { document.execCommand("copy"); done(); }
+  catch (e) { showToast("复制失败，请手动选择"); }
+  document.body.removeChild(ta);
+}
+let toastTimer = null;
+function showToast(msg) {
+  const t = $("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 1700);
+}
+
+function syncRatioUI() {
+  const checked = document.querySelector('input[name=ratio]:checked');
+  const other = checked && checked.value === "__other__";
+  $("ratioInput").style.display = other ? "block" : "none";
+  document.querySelectorAll(".chip").forEach((c) => {
+    const r = c.querySelector('input[type=radio]');
+    c.classList.toggle("on", !!(r && r.checked));
+  });
+  if (other) setTimeout(() => $("ratioInput").focus(), 30);
+}
+
+function applyInitMode() {
+  initMode = $("initModeSel").value;
+  if (initMode === "custom") {
+    const gv = $("initInput").value || "0";
+    players.forEach((p) => { p.pinit = gv; });
+    $("initInput").disabled = true;
+  } else {
+    $("initInput").disabled = false;
+  }
+  $("liveStatus").textContent = initMode === "custom"
+    ? "自定义模式：终局分合计需等于「各人起始分之和」"
+    : "统一模式：终局分合计需等于「人数 × 起始分」";
+  $("liveStatus").className = "status idle";
+  renderPlayers();
+  liveValidate();
+}
+
+function bindLive() {
+  $("feeInput").addEventListener("input", liveValidate);
+  $("initInput").addEventListener("input", liveValidate);
+  $("initModeSel").addEventListener("change", applyInitMode);
+  document.querySelectorAll('input[name=ratio]').forEach((r) =>
+    r.addEventListener("change", () => { syncRatioUI(); liveValidate(); }));
+  $("ratioInput").addEventListener("input", liveValidate);
+  $("playerList").addEventListener("input", (e) => {
+    if (e.target.classList.contains("score") || e.target.classList.contains("name") || e.target.classList.contains("pinit")) liveValidate();
+  });
+  $("playerList").addEventListener("change", (e) => {
+    if (e.target.type === "radio" || e.target.type === "checkbox") { syncFromDOM(); liveValidate(); }
+  });
+}
+
+$("addBtn").addEventListener("click", () => {
+  if (players.length >= MAX) return;
+  syncFromDOM();
+  players.push({
+    name: DEFAULT_NAMES[players.length] || `牌手${players.length + 1}`,
+    score: "", pinit: $("initInput").value || "0", prepaid: false, exempted: false,
+  });
+  renderPlayers(); liveValidate();
+});
+$("genBtn").addEventListener("click", generate);
+
+(function init() {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  $("dateInput").value = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  $("timeInput").value = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  renderPlayers();
+  bindLive();
+  syncRatioUI();
+  applyInitMode();
+})();
+</script>
+</body>
+</html>
